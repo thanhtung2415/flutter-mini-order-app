@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
+import '../../config/payment_qr_config.dart';
 import '../../models/app_models.dart';
 import '../../state/app_state.dart';
 import '../../utils/formatters.dart';
@@ -27,7 +28,9 @@ class _PaymentScreenState extends State<PaymentScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        context.read<AppState>().createPayment(widget.orderId, _method);
+        unawaited(
+          context.read<AppState>().createPayment(widget.orderId, _method),
+        );
       }
     });
     _timer = Timer.periodic(const Duration(seconds: 1), (_) {
@@ -155,10 +158,10 @@ class _PaymentScreenState extends State<PaymentScreen> {
                 onSelectionChanged:
                     order.status == OrderStatus.paid || !canManage
                     ? null
-                    : (values) {
+                    : (values) async {
                         final value = values.first;
                         setState(() => _method = value);
-                        context.read<AppState>().createPayment(
+                        await context.read<AppState>().createPayment(
                           widget.orderId,
                           value,
                         );
@@ -170,22 +173,33 @@ class _PaymentScreenState extends State<PaymentScreen> {
                   order: order,
                   payment: visiblePayment,
                   onCreate: canManage
-                      ? () => state.createPayment(order.id, PaymentMethod.qr)
+                      ? () async {
+                          await state.createPayment(order.id, PaymentMethod.qr);
+                        }
                       : null,
                   onConfirm: visiblePayment == null || !canManage
                       ? null
-                      : () => state.confirmPayment(visiblePayment.id),
+                      : () async {
+                          await state.confirmPayment(visiblePayment.id);
+                        },
                 )
               else
                 _CashPaymentPanel(
                   order: order,
                   payment: visiblePayment,
                   onCreate: canManage
-                      ? () => state.createPayment(order.id, PaymentMethod.cash)
+                      ? () async {
+                          await state.createPayment(
+                            order.id,
+                            PaymentMethod.cash,
+                          );
+                        }
                       : null,
                   onConfirm: visiblePayment == null || !canManage
                       ? null
-                      : () => state.confirmPayment(visiblePayment.id),
+                      : () async {
+                          await state.confirmPayment(visiblePayment.id);
+                        },
                 ),
             ],
           ),
@@ -211,6 +225,48 @@ class _QrPaymentPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final expired = payment?.isQrExpired ?? false;
+    final paid =
+        order.status == OrderStatus.paid ||
+        payment?.status == PaymentStatus.paid;
+    if (paid) {
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE8F5E9),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.check_circle,
+                  size: 48,
+                  color: Color(0xFF2E7D32),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Text(
+                'Thanh toán hoàn tất',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w900,
+                  color: const Color(0xFF2E7D32),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                money(payment?.amount ?? order.total),
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -239,12 +295,47 @@ class _QrPaymentPanel extends StatelessWidget {
                     borderRadius: BorderRadius.circular(8),
                     border: Border.all(color: const Color(0xFFE0E6EA)),
                   ),
-                  child: QrImageView(
-                    data: payment!.qrContent,
-                    version: QrVersions.auto,
-                    size: 220,
-                    backgroundColor: Colors.white,
-                  ),
+                  child: payment!.qrContent.startsWith('https://')
+                      ? SizedBox(
+                          width: 270,
+                          child: AspectRatio(
+                            aspectRatio: 540 / 640,
+                            child: Image.network(
+                              payment!.qrContent,
+                              fit: BoxFit.contain,
+                              loadingBuilder: (context, child, progress) {
+                                if (progress == null) return child;
+                                return const Center(
+                                  child: CircularProgressIndicator(),
+                                );
+                              },
+                              errorBuilder: (context, error, stackTrace) {
+                                return const Center(
+                                  child: Padding(
+                                    padding: EdgeInsets.all(20),
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(Icons.cloud_off, size: 40),
+                                        SizedBox(height: 8),
+                                        Text(
+                                          'Không tải được VietQR. Vui lòng kiểm tra mạng.',
+                                          textAlign: TextAlign.center,
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                        )
+                      : QrImageView(
+                          data: payment!.qrContent,
+                          version: QrVersions.auto,
+                          size: 220,
+                          backgroundColor: Colors.white,
+                        ),
                 ),
               ),
               const SizedBox(height: 12),
@@ -260,11 +351,7 @@ class _QrPaymentPanel extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 12),
-              SelectableText(
-                payment!.qrContent,
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
+              _TransferInformation(order: order, payment: payment!),
               const SizedBox(height: 14),
               if (expired)
                 OutlinedButton.icon(
@@ -276,13 +363,104 @@ class _QrPaymentPanel extends StatelessWidget {
                 FilledButton.icon(
                   onPressed: order.status == OrderStatus.paid
                       ? null
-                      : onConfirm,
+                      : onConfirm == null
+                      ? null
+                      : () async {
+                          final confirmed = await showConfirmDialog(
+                            context: context,
+                            title: 'Xác nhận đã thanh toán?',
+                            message:
+                                'Chỉ xác nhận sau khi khách đã hoàn tất chuyển khoản.',
+                            confirmLabel: 'Đã thanh toán',
+                          );
+                          if (confirmed) onConfirm!();
+                        },
                   icon: const Icon(Icons.verified),
-                  label: const Text('Xác nhận đã chuyển khoản'),
+                  label: const Text('Đã thanh toán'),
                 ),
             ],
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _TransferInformation extends StatelessWidget {
+  const _TransferInformation({required this.order, required this.payment});
+
+  final Order order;
+  final Payment payment;
+
+  @override
+  Widget build(BuildContext context) {
+    final content = PaymentQrConfig.transferContent(order.id);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: const Color(0xFFFFF3E0),
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: const Color(0xFFFFB74D)),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline, color: Color(0xFFE65100)),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Tài khoản demo phục vụ thuyết trình. Không chuyển tiền thật.',
+                  style: TextStyle(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        const _PaymentInfoRow(
+          label: 'Ngân hàng',
+          value: PaymentQrConfig.bankName,
+        ),
+        const _PaymentInfoRow(
+          label: 'Số tài khoản',
+          value: PaymentQrConfig.accountNumber,
+        ),
+        const _PaymentInfoRow(
+          label: 'Chủ tài khoản',
+          value: PaymentQrConfig.accountName,
+        ),
+        _PaymentInfoRow(label: 'Số tiền', value: money(payment.amount)),
+        _PaymentInfoRow(label: 'Nội dung', value: content),
+      ],
+    );
+  }
+}
+
+class _PaymentInfoRow extends StatelessWidget {
+  const _PaymentInfoRow({required this.label, required this.value});
+
+  final String label;
+  final String value;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(width: 110, child: Text(label)),
+          Expanded(
+            child: SelectableText(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+          ),
+        ],
       ),
     );
   }
