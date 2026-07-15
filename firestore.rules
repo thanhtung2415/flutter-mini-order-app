@@ -1,0 +1,111 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function activeUser() {
+      return signedIn()
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid))
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.trangThai == 'active';
+    }
+
+    function isAdmin() {
+      return activeUser()
+        && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.vaiTro == 'admin';
+    }
+
+    function unchanged() {
+      return request.resource.data == resource.data;
+    }
+
+    function ownsOrder(orderId) {
+      return activeUser()
+        && get(/databases/$(database)/documents/orders/$(orderId)).data.userId == request.auth.uid;
+    }
+
+    // Firebase Authentication accounts and their role profiles are created,
+    // locked and deleted only by Admin SDK Cloud Functions.
+    match /users/{userId} {
+      allow read: if activeUser();
+      allow write: if false;
+    }
+
+    // Requests are written and reviewed only by trusted Cloud Functions.
+    // Admins receive the list in realtime; a requester may only read their
+    // own request while the Google session is still active.
+    match /access_requests/{userId} {
+      allow read: if isAdmin() || (signedIn() && request.auth.uid == userId);
+      allow write: if false;
+    }
+
+    match /areas/{areaId} {
+      allow read: if activeUser();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (activeUser() && unchanged());
+    }
+
+    match /categories/{categoryId} {
+      allow read: if activeUser();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (activeUser() && unchanged());
+    }
+
+    match /products/{productId} {
+      allow read: if activeUser();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (activeUser()
+        && (unchanged() || (
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['soLuongTon', 'trangThai', 'updatedAt'])
+          && request.resource.data.soLuongTon is int
+          && request.resource.data.soLuongTon >= 0
+        )));
+    }
+
+    match /tables/{tableId} {
+      allow read: if activeUser();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin() || (activeUser()
+        && (unchanged() || request.resource.data.diff(resource.data)
+          .affectedKeys().hasOnly([
+            'trangThai',
+            'orderHienTaiId',
+            'ghiChu',
+            'updatedAt'
+          ])));
+    }
+
+    match /orders/{orderId} {
+      allow read: if activeUser();
+      allow create: if activeUser()
+        && (isAdmin() || request.resource.data.userId == request.auth.uid);
+      allow update: if activeUser() && (
+        unchanged() || isAdmin() || (
+          resource.data.userId == request.auth.uid
+          && request.resource.data.userId == resource.data.userId
+        )
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /payments/{paymentId} {
+      allow read: if activeUser();
+      allow create: if activeUser()
+        && (isAdmin() || ownsOrder(request.resource.data.orderId));
+      allow update: if activeUser()
+        && (unchanged() || isAdmin() || ownsOrder(resource.data.orderId));
+      allow delete: if isAdmin();
+    }
+
+    match /app_metadata/{documentId} {
+      allow read, write: if activeUser();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
