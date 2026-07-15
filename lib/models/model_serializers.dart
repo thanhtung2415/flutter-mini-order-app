@@ -145,9 +145,14 @@ extension OrderItemSerializer on OrderItem {
     'donGia': unitPrice,
     'thanhTien': total,
     'ghiChuMon': note,
+    'kitchenBatchId': kitchenBatchId,
   };
 
-  static OrderItem fromMap(Map<String, dynamic> map) {
+  static OrderItem fromMap(
+    Map<String, dynamic> map, {
+    String fallbackKitchenBatchId = '',
+  }) {
+    final savedKitchenBatchId = _string(map['kitchenBatchId']);
     return OrderItem(
       id: _string(map['orderItemId']),
       productId: _string(map['productId']),
@@ -155,6 +160,9 @@ extension OrderItemSerializer on OrderItem {
       quantity: _int(map['soLuong']),
       unitPrice: _int(map['donGia']),
       note: _string(map['ghiChuMon']),
+      kitchenBatchId: savedKitchenBatchId.isEmpty
+          ? fallbackKitchenBatchId
+          : savedKitchenBatchId,
     );
   }
 }
@@ -178,19 +186,29 @@ extension OrderSerializer on Order {
 
   static Order fromMap(Map<String, dynamic> map) {
     final rawItems = map['items'] as List<dynamic>? ?? [];
+    final orderId = _string(map['orderId']);
+    final status = _enumValue(
+      OrderStatus.values,
+      map['trangThai'],
+      OrderStatus.pending,
+    );
+    final fallbackKitchenBatchId = status == OrderStatus.pending
+        ? ''
+        : 'legacy_$orderId';
     return Order(
-      id: _string(map['orderId']),
+      id: orderId,
       tableId: _string(map['tableId']),
       userId: _string(map['userId']),
       items: rawItems
           .whereType<Map<String, dynamic>>()
-          .map(OrderItemSerializer.fromMap)
+          .map(
+            (item) => OrderItemSerializer.fromMap(
+              item,
+              fallbackKitchenBatchId: fallbackKitchenBatchId,
+            ),
+          )
           .toList(),
-      status: _enumValue(
-        OrderStatus.values,
-        map['trangThai'],
-        OrderStatus.pending,
-      ),
+      status: status,
       paymentStatus: _enumValue(
         PaymentStatus.values,
         map['paymentStatus'],

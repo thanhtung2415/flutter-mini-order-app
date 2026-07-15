@@ -291,6 +291,7 @@ class OrderItem {
     required this.quantity,
     required this.unitPrice,
     this.note = '',
+    this.kitchenBatchId = '',
   });
 
   final String id;
@@ -299,8 +300,10 @@ class OrderItem {
   final int quantity;
   final int unitPrice;
   final String note;
+  final String kitchenBatchId;
 
   int get total => quantity * unitPrice;
+  bool get hasBeenSentToKitchen => kitchenBatchId.isNotEmpty;
 
   OrderItem copyWith({
     String? id,
@@ -309,6 +312,7 @@ class OrderItem {
     int? quantity,
     int? unitPrice,
     String? note,
+    String? kitchenBatchId,
   }) {
     return OrderItem(
       id: id ?? this.id,
@@ -317,6 +321,7 @@ class OrderItem {
       quantity: quantity ?? this.quantity,
       unitPrice: unitPrice ?? this.unitPrice,
       note: note ?? this.note,
+      kitchenBatchId: kitchenBatchId ?? this.kitchenBatchId,
     );
   }
 }
@@ -354,12 +359,35 @@ class Order {
 
   int get totalQuantity => items.fold(0, (sum, item) => sum + item.quantity);
 
+  bool get hasUnsentKitchenItems =>
+      items.any((item) => !item.hasBeenSentToKitchen);
+
+  List<OrderItem> get currentKitchenItems {
+    final unsent = items
+        .where((item) => !item.hasBeenSentToKitchen)
+        .toList(growable: false);
+    if (unsent.isNotEmpty) return unsent;
+
+    var latestBatchId = '';
+    for (final item in items.reversed) {
+      if (item.kitchenBatchId.isNotEmpty) {
+        latestBatchId = item.kitchenBatchId;
+        break;
+      }
+    }
+    if (latestBatchId.isEmpty) return const [];
+    return items
+        .where((item) => item.kitchenBatchId == latestBatchId)
+        .toList(growable: false);
+  }
+
   bool get isActive =>
       status != OrderStatus.paid && status != OrderStatus.cancelled;
 
   bool get isDelayed {
     final start = sentKitchenAt ?? createdAt;
-    return isActive && DateTime.now().difference(start).inMinutes >= 10;
+    return (status == OrderStatus.pending || status == OrderStatus.preparing) &&
+        DateTime.now().difference(start).inMinutes >= 10;
   }
 
   Order copyWith({
@@ -374,6 +402,8 @@ class Order {
     DateTime? updatedAt,
     DateTime? sentKitchenAt,
     DateTime? completedAt,
+    bool clearSentKitchenAt = false,
+    bool clearCompletedAt = false,
     String? note,
   }) {
     return Order(
@@ -386,8 +416,10 @@ class Order {
       paymentMethod: paymentMethod ?? this.paymentMethod,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
-      sentKitchenAt: sentKitchenAt ?? this.sentKitchenAt,
-      completedAt: completedAt ?? this.completedAt,
+      sentKitchenAt: clearSentKitchenAt
+          ? null
+          : sentKitchenAt ?? this.sentKitchenAt,
+      completedAt: clearCompletedAt ? null : completedAt ?? this.completedAt,
       note: note ?? this.note,
     );
   }

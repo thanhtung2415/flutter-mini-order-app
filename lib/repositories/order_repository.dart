@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import '../models/app_models.dart';
 
 abstract class OrderRepository {
@@ -9,7 +11,7 @@ abstract class OrderRepository {
   List<Order> get orders;
   List<Payment> get payments;
 
-  AppUser? authenticate(String email, String password);
+  AppUser? findUserByEmail(String email);
 
   Area? findArea(String id);
   RestaurantTable? findTable(String id);
@@ -20,7 +22,7 @@ abstract class OrderRepository {
   Order? activeOrderForTable(String tableId);
   Payment? latestPaymentForOrder(String orderId);
 
-  void upsertUser(AppUser user, {String password});
+  void upsertUser(AppUser user);
   void deleteUser(String id);
   void upsertArea(Area area);
   void deleteArea(String id);
@@ -45,4 +47,6 @@ abstract class PersistentOrderRepository extends OrderRepository {
   Future<void> persistNow();
   Future<void> resetToSeedData();
   String exportBackupJson();
+  T mutateWithoutPersistence<T>(T Function() mutation);
+  Stream<void>? watchRemoteChanges();
 }

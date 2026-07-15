@@ -42,6 +42,7 @@ void main() {
           productName: 'Cà phê sữa',
           quantity: 2,
           unitPrice: 25000,
+          kitchenBatchId: 'kitchen_1',
         ),
       ],
       status: OrderStatus.preparing,
@@ -57,6 +58,7 @@ void main() {
     expect(restored.id, order.id);
     expect(restored.total, 50000);
     expect(restored.items.single.productName, 'Cà phê sữa');
+    expect(restored.items.single.kitchenBatchId, 'kitchen_1');
     expect(restored.status, OrderStatus.preparing);
   });
 }
