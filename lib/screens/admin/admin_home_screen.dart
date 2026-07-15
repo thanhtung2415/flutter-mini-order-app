@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/app_models.dart';
+import '../../services/access_request_service.dart';
+import '../../services/export_file_service.dart';
+import '../../services/product_image_local_service.dart';
 import '../../services/report_service.dart';
 import '../../state/app_state.dart';
 import '../../utils/formatters.dart';
@@ -290,9 +294,56 @@ class UsersAdminTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
+    final reviewRequests = state.accessRequests
+        .where((request) => request.status != AccessRequestStatus.approved)
+        .toList(growable: false);
     return ListView(
       padding: const EdgeInsets.only(bottom: 20),
       children: [
+        if (reviewRequests.isNotEmpty) ...[
+          SectionTitle(
+            title:
+                'Yêu cầu đăng nhập Google (${state.pendingAccessRequestCount})',
+          ),
+          for (final request in reviewRequests)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+              child: Card(
+                color: request.status == AccessRequestStatus.pending
+                    ? const Color(0xFFFFF8E1)
+                    : const Color(0xFFFFEBEE),
+                child: ListTile(
+                  leading: const CircleAvatar(child: Icon(Icons.login)),
+                  title: Text(
+                    request.fullName.trim().isEmpty
+                        ? request.email
+                        : request.fullName,
+                  ),
+                  subtitle: Text('${request.email} · ${request.status.label}'),
+                  trailing: PopupMenuButton<String>(
+                    onSelected: (value) async {
+                      if (value == 'approve') {
+                        _showAccessRequestDialog(context, request);
+                      } else if (value == 'reject') {
+                        await context
+                            .read<AppState>()
+                            .reviewGoogleAccessRequest(
+                              request: request,
+                              approved: false,
+                              role: UserRole.staff,
+                              shift: 'Ca sáng',
+                            );
+                      }
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'approve', child: Text('Cấp quyền')),
+                      PopupMenuItem(value: 'reject', child: Text('Từ chối')),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+        ],
         SectionTitle(
           title: 'Tài khoản nhân viên',
           action: IconButton.filled(
@@ -322,7 +373,7 @@ class UsersAdminTab extends StatelessWidget {
                     if (value == 'edit') {
                       _showUserDialog(context, existing: user);
                     } else if (value == 'lock') {
-                      context.read<AppState>().toggleUserStatus(user);
+                      await context.read<AppState>().toggleUserStatus(user);
                     } else if (value == 'delete') {
                       final confirmed = await showConfirmDialog(
                         context: context,
@@ -333,7 +384,7 @@ class UsersAdminTab extends StatelessWidget {
                         destructive: true,
                       );
                       if (confirmed && context.mounted) {
-                        context.read<AppState>().deleteUser(user.id);
+                        await context.read<AppState>().deleteUser(user.id);
                       }
                     }
                   },
@@ -357,6 +408,75 @@ class UsersAdminTab extends StatelessWidget {
     );
   }
 
+  void _showAccessRequestDialog(
+    BuildContext context,
+    GoogleAccessRequest request,
+  ) {
+    var role = UserRole.staff;
+    final shift = TextEditingController(text: 'Ca sáng');
+    showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Cấp quyền tài khoản Google'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(request.email),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<UserRole>(
+                initialValue: role,
+                decoration: const InputDecoration(labelText: 'Vai trò'),
+                items: UserRole.values
+                    .map(
+                      (item) => DropdownMenuItem(
+                        value: item,
+                        child: Text(item.label),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  setDialogState(() {
+                    role = value ?? role;
+                    shift.text = role.isAdmin ? 'Cả ngày' : 'Ca sáng';
+                  });
+                },
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: shift,
+                decoration: const InputDecoration(labelText: 'Ca làm việc'),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              onPressed: () async {
+                final saved = await context
+                    .read<AppState>()
+                    .reviewGoogleAccessRequest(
+                      request: request,
+                      approved: true,
+                      role: role,
+                      shift: shift.text,
+                    );
+                if (saved && dialogContext.mounted) {
+                  Navigator.pop(dialogContext);
+                }
+              },
+              child: const Text('Cấp quyền'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _showUserDialog(BuildContext context, {AppUser? existing}) {
     final state = context.read<AppState>();
     final name = TextEditingController(text: existing?.fullName ?? '');
@@ -364,6 +484,7 @@ class UsersAdminTab extends StatelessWidget {
     final phone = TextEditingController(text: existing?.phone ?? '');
     final code = TextEditingController(text: existing?.employeeCode ?? '');
     final shift = TextEditingController(text: existing?.shift ?? 'Ca sáng');
+    final password = TextEditingController();
     var role = existing?.role ?? UserRole.staff;
 
     showDialog<void>(
@@ -388,6 +509,16 @@ class UsersAdminTab extends StatelessWidget {
                       controller: email,
                       decoration: const InputDecoration(labelText: 'Email'),
                     ),
+                    if (existing == null) ...[
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: password,
+                        obscureText: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Mật khẩu tạm (tối thiểu 6 ký tự)',
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     TextField(
                       controller: phone,
@@ -433,7 +564,7 @@ class UsersAdminTab extends StatelessWidget {
                   child: const Text('Hủy'),
                 ),
                 FilledButton(
-                  onPressed: () {
+                  onPressed: () async {
                     final now = DateTime.now();
                     final user = AppUser(
                       id: existing?.id ?? state.nextId('u'),
@@ -450,8 +581,15 @@ class UsersAdminTab extends StatelessWidget {
                       createdAt: existing?.createdAt ?? now,
                       updatedAt: now,
                     );
-                    state.upsertUser(user);
-                    Navigator.pop(context);
+                    final saved = await state.upsertUser(
+                      user,
+                      temporaryPassword: existing == null
+                          ? password.text
+                          : null,
+                    );
+                    if (saved && context.mounted) {
+                      Navigator.pop(context);
+                    }
                   },
                   child: const Text('Lưu'),
                 ),
@@ -574,8 +712,14 @@ class ProductsAdminTab extends StatelessWidget {
     final warning = TextEditingController(
       text: '${existing?.warningThreshold ?? 5}',
     );
+    final productId =
+        existing?.id ?? 'P${DateTime.now().millisecondsSinceEpoch % 100000}';
+    final imagePicker = ImagePicker();
+    final imageLocalService = ProductImageLocalService();
     var categoryId = existing?.categoryId ?? state.categories.first.id;
     var status = existing?.status ?? ProductStatus.available;
+    var pickingImage = false;
+    String? imagePickError;
 
     showDialog<void>(
       context: context,
@@ -604,9 +748,114 @@ class ProductsAdminTab extends StatelessWidget {
                       controller: imageUrl,
                       keyboardType: TextInputType.url,
                       decoration: const InputDecoration(
-                        labelText: 'Link ảnh món',
+                        labelText: 'Link ảnh món hoặc ảnh local',
                       ),
                     ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: pickingImage
+                            ? null
+                            : () async {
+                                final source =
+                                    await showModalBottomSheet<ImageSource>(
+                                      context: context,
+                                      builder: (context) {
+                                        return SafeArea(
+                                          child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              ListTile(
+                                                leading: const Icon(
+                                                  Icons.photo_library_outlined,
+                                                ),
+                                                title: const Text(
+                                                  'Chọn từ thư viện ảnh',
+                                                ),
+                                                onTap: () => Navigator.pop(
+                                                  context,
+                                                  ImageSource.gallery,
+                                                ),
+                                              ),
+                                              ListTile(
+                                                leading: const Icon(
+                                                  Icons.photo_camera_outlined,
+                                                ),
+                                                title: const Text(
+                                                  'Chụp bằng camera',
+                                                ),
+                                                onTap: () => Navigator.pop(
+                                                  context,
+                                                  ImageSource.camera,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    );
+                                if (source == null) return;
+
+                                final pickedFile = await imagePicker.pickImage(
+                                  source: source,
+                                  imageQuality: 70,
+                                  maxWidth: 900,
+                                );
+                                if (pickedFile == null) return;
+
+                                setDialogState(() {
+                                  pickingImage = true;
+                                  imagePickError = null;
+                                });
+
+                                try {
+                                  final bytes = await pickedFile.readAsBytes();
+                                  final dataUrl = imageLocalService
+                                      .buildDataUrl(
+                                        bytes: bytes,
+                                        contentType: pickedFile.mimeType,
+                                      );
+                                  if (!context.mounted) return;
+                                  setDialogState(() {
+                                    imageUrl.text = dataUrl;
+                                    pickingImage = false;
+                                  });
+                                } catch (error) {
+                                  if (!context.mounted) return;
+                                  setDialogState(() {
+                                    pickingImage = false;
+                                    imagePickError =
+                                        'Không đọc được ảnh đã chọn.';
+                                  });
+                                }
+                              },
+                        icon: pickingImage
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                ),
+                              )
+                            : const Icon(Icons.add_photo_alternate_outlined),
+                        label: Text(
+                          pickingImage
+                              ? 'Đang xử lý ảnh...'
+                              : 'Chọn/chụp ảnh lưu local',
+                        ),
+                      ),
+                    ),
+                    if (imagePickError != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        imagePickError!,
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 10),
                     TextField(
                       controller: price,
@@ -672,9 +921,7 @@ class ProductsAdminTab extends StatelessWidget {
                   onPressed: () {
                     final now = DateTime.now();
                     final product = Product(
-                      id:
-                          existing?.id ??
-                          'P${DateTime.now().millisecondsSinceEpoch % 100000}',
+                      id: productId,
                       name: name.text.trim(),
                       price: int.tryParse(price.text.trim()) ?? 0,
                       imageUrl: imageUrl.text.trim(),
@@ -686,8 +933,9 @@ class ProductsAdminTab extends StatelessWidget {
                       createdAt: existing?.createdAt ?? now,
                       updatedAt: now,
                     );
-                    state.upsertProduct(product);
-                    Navigator.pop(context);
+                    if (state.upsertProduct(product)) {
+                      Navigator.pop(context);
+                    }
                   },
                   child: const Text('Lưu'),
                 ),
@@ -836,14 +1084,14 @@ class TablesAdminTab extends StatelessWidget {
           ),
           FilledButton(
             onPressed: () {
-              state.upsertArea(
+              final saved = state.upsertArea(
                 Area(
                   id: existing?.id ?? state.nextId('area'),
                   name: name.text.trim(),
                   description: description.text.trim(),
                 ),
               );
-              Navigator.pop(context);
+              if (saved) Navigator.pop(context);
             },
             child: const Text('Lưu'),
           ),
@@ -917,7 +1165,7 @@ class TablesAdminTab extends StatelessWidget {
               ),
               FilledButton(
                 onPressed: () {
-                  state.upsertTable(
+                  final saved = state.upsertTable(
                     RestaurantTable(
                       id: existing?.id ?? state.nextId('table'),
                       name: name.text.trim(),
@@ -928,7 +1176,7 @@ class TablesAdminTab extends StatelessWidget {
                       note: note.text.trim(),
                     ),
                   );
-                  Navigator.pop(context);
+                  if (saved) Navigator.pop(context);
                 },
                 child: const Text('Lưu'),
               ),
@@ -1026,14 +1274,14 @@ class CategoriesAdminTab extends StatelessWidget {
           ),
           FilledButton(
             onPressed: () {
-              state.upsertCategory(
+              final saved = state.upsertCategory(
                 Category(
                   id: existing?.id ?? state.nextId('category'),
                   name: name.text.trim(),
                   description: description.text.trim(),
                 ),
               );
-              Navigator.pop(context);
+              if (saved) Navigator.pop(context);
             },
             child: const Text('Lưu'),
           ),
@@ -1043,13 +1291,37 @@ class CategoriesAdminTab extends StatelessWidget {
   }
 }
 
-class AdminHistoryPage extends StatelessWidget {
+class AdminHistoryPage extends StatefulWidget {
   const AdminHistoryPage({super.key});
+
+  @override
+  State<AdminHistoryPage> createState() => _AdminHistoryPageState();
+}
+
+class _AdminHistoryPageState extends State<AdminHistoryPage> {
+  DateTimeRange? _range;
 
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    final payments = state.paidPayments;
+    final payments = state.paidPayments.where((payment) {
+      final range = _range;
+      final paidAt = payment.paidAt;
+      if (range == null || paidAt == null) return range == null;
+      final end = DateTime(
+        range.end.year,
+        range.end.month,
+        range.end.day,
+        23,
+        59,
+        59,
+      );
+      return !paidAt.isBefore(range.start) && !paidAt.isAfter(end);
+    }).toList();
+    final filteredRevenue = payments.fold<int>(
+      0,
+      (sum, payment) => sum + payment.amount,
+    );
     final orders = state.orderHistory;
     return ListView(
       padding: const EdgeInsets.only(bottom: 20),
@@ -1058,6 +1330,35 @@ class AdminHistoryPage extends StatelessWidget {
           padding: const EdgeInsets.all(16),
           child: Column(
             children: [
+              Card(
+                child: ListTile(
+                  leading: const Icon(Icons.date_range),
+                  title: Text(
+                    _range == null
+                        ? 'Tất cả thời gian'
+                        : '${shortDate(_range!.start)} - ${shortDate(_range!.end)}',
+                  ),
+                  subtitle: Text(
+                    '${payments.length} thanh toán · ${money(filteredRevenue)}',
+                  ),
+                  trailing: Wrap(
+                    children: [
+                      if (_range != null)
+                        IconButton(
+                          tooltip: 'Xóa bộ lọc',
+                          onPressed: () => setState(() => _range = null),
+                          icon: const Icon(Icons.filter_alt_off),
+                        ),
+                      IconButton(
+                        tooltip: 'Chọn khoảng ngày',
+                        onPressed: () => _pickDateRange(context),
+                        icon: const Icon(Icons.edit_calendar),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 10),
               MetricCard(
                 title: 'Doanh thu ngày ${shortDate(DateTime.now())}',
                 value: money(state.todayRevenue),
@@ -1122,24 +1423,107 @@ class AdminHistoryPage extends StatelessWidget {
             ),
         SectionTitle(
           title: 'Lịch sử thanh toán',
-          action: IconButton.filledTonal(
+          action: PopupMenuButton<String>(
             tooltip: 'Xuất báo cáo',
-            onPressed: () {
-              final csv = ReportService().buildRevenueCsv(
-                payments: state.paidPayments,
-                orderById: state.orderById,
-                tableById: state.tableById,
-                userById: state.userById,
-              );
-              Clipboard.setData(ClipboardData(text: csv));
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Đã copy báo cáo doanh thu CSV.'),
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
-            },
             icon: const Icon(Icons.file_download_outlined),
+            onSelected: (value) async {
+              if (value == 'copy_csv') {
+                final csv = ReportService().buildRevenueCsv(
+                  payments: payments,
+                  orderById: state.orderById,
+                  tableById: state.tableById,
+                  userById: state.userById,
+                );
+                Clipboard.setData(ClipboardData(text: csv));
+                if (!context.mounted) return;
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Đã copy báo cáo doanh thu CSV.'),
+                    behavior: SnackBarBehavior.floating,
+                  ),
+                );
+                return;
+              }
+
+              if (value == 'share_excel') {
+                try {
+                  final exporter = ExportFileService();
+                  final file = await exporter.createRevenueExcel(
+                    payments: payments,
+                    orderById: state.orderById,
+                    tableById: state.tableById,
+                    userById: state.userById,
+                  );
+                  await exporter.shareFile(
+                    file: file,
+                    title: 'Báo cáo doanh thu',
+                    message: 'Báo cáo doanh thu Mini Order App',
+                    mimeType:
+                        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                  );
+                } catch (_) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Không xuất được file Excel.'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              }
+
+              if (value == 'share_pdf') {
+                try {
+                  final exporter = ExportFileService();
+                  final file = await exporter.createRevenuePdf(
+                    payments: payments,
+                    orderById: state.orderById,
+                    tableById: state.tableById,
+                    userById: state.userById,
+                    rangeLabel: _range == null
+                        ? 'Tat ca thoi gian'
+                        : '${shortDate(_range!.start)} - ${shortDate(_range!.end)}',
+                  );
+                  await exporter.shareFile(
+                    file: file,
+                    title: 'Báo cáo doanh thu PDF',
+                    message: 'Báo cáo doanh thu Mini Order App',
+                    mimeType: 'application/pdf',
+                  );
+                } catch (_) {
+                  if (!context.mounted) return;
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Không xuất được file PDF.'),
+                      behavior: SnackBarBehavior.floating,
+                    ),
+                  );
+                }
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                value: 'copy_csv',
+                child: ListTile(
+                  leading: Icon(Icons.content_copy),
+                  title: Text('Copy CSV'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'share_excel',
+                child: ListTile(
+                  leading: Icon(Icons.table_chart_outlined),
+                  title: Text('Xuất Excel .xlsx'),
+                ),
+              ),
+              PopupMenuItem(
+                value: 'share_pdf',
+                child: ListTile(
+                  leading: Icon(Icons.picture_as_pdf_outlined),
+                  title: Text('Xuất PDF'),
+                ),
+              ),
+            ],
           ),
         ),
         if (payments.isEmpty)
@@ -1160,6 +1544,20 @@ class AdminHistoryPage extends StatelessWidget {
       ],
     );
   }
+
+  Future<void> _pickDateRange(BuildContext context) async {
+    final now = DateTime.now();
+    final selected = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(now.year - 3),
+      lastDate: DateTime(now.year + 1),
+      initialDateRange: _range,
+      helpText: 'Chọn thời gian báo cáo',
+    );
+    if (selected != null && mounted) {
+      setState(() => _range = selected);
+    }
+  }
 }
 
 class SettingsAdminTab extends StatelessWidget {
@@ -1171,7 +1569,7 @@ class SettingsAdminTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: 20),
       children: [
-        const SectionTitle(title: 'Dữ liệu demo'),
+        const SectionTitle(title: 'Dữ liệu hệ thống'),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
           child: Card(
@@ -1212,14 +1610,14 @@ class SettingsAdminTab extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   Text(
-                    'Backup local',
+                    'Backup dữ liệu',
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w800,
                     ),
                   ),
                   const SizedBox(height: 8),
                   const Text(
-                    'Dữ liệu CRUD/order/payment được lưu local bằng SharedPreferences để demo không mất sau khi tắt app.',
+                    'Dữ liệu được lưu local để dùng ổn định và đồng bộ lên Firestore sau khi đăng nhập Firebase.',
                   ),
                   const SizedBox(height: 14),
                   FilledButton.tonalIcon(
@@ -1244,7 +1642,7 @@ class SettingsAdminTab extends StatelessWidget {
                         context: context,
                         title: 'Reset dữ liệu mẫu?',
                         message:
-                            'Toàn bộ thay đổi local sẽ được thay bằng dữ liệu demo ban đầu.',
+                            'Dữ liệu local và Firestore sẽ được thay bằng dữ liệu mẫu ban đầu.',
                         confirmLabel: 'Reset',
                         destructive: true,
                       );
@@ -1265,12 +1663,12 @@ class SettingsAdminTab extends StatelessWidget {
           child: Card(
             child: ListTile(
               leading: const CircleAvatar(child: Icon(Icons.cloud_queue)),
-              title: const Text('Sẵn sàng gắn Firebase'),
+              title: const Text('Firebase Authentication + Firestore'),
               subtitle: const Text(
-                'OrderRepository đã tách interface; khi có Firebase config chỉ cần thay repository implementation.',
+                'Firebase xác thực tài khoản; Firestore đồng bộ dữ liệu và SharedPreferences hỗ trợ local-first.',
               ),
               trailing: StatusChip(
-                label: 'MVVM',
+                label: 'Local + Cloud',
                 color: Theme.of(context).colorScheme.primary,
               ),
             ),

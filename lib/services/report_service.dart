@@ -50,7 +50,7 @@ class ReportService {
       ..writeln('Trang thai: ${order.status.label}')
       ..writeln('------------------------------');
 
-    for (final item in order.items) {
+    for (final item in order.currentKitchenItems) {
       buffer.writeln('${item.quantity} x ${item.productName}');
       if (item.note.isNotEmpty) {
         buffer.writeln('  Ghi chu: ${item.note}');
