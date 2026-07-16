@@ -354,7 +354,10 @@ class _CartItemTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final state = context.read<AppState>();
+    final state = context.watch<AppState>();
+    final product = state.productById(item.productId);
+    final canIncrease =
+        product?.canOrder == true && item.quantity < (product?.stock ?? 0);
     return Padding(
       padding: const EdgeInsets.only(bottom: 8),
       child: Row(
@@ -388,7 +391,9 @@ class _CartItemTile extends StatelessWidget {
           ),
           IconButton(
             tooltip: 'Tăng',
-            onPressed: () => state.increaseCartItem(item.productId),
+            onPressed: canIncrease
+                ? () => state.increaseCartItem(item.productId)
+                : null,
             icon: const Icon(Icons.add_circle_outline),
           ),
           IconButton(
