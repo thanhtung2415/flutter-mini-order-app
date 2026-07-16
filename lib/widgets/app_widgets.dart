@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/app_models.dart';
+import '../services/product_image_local_service.dart';
 import '../state/app_state.dart';
 
 Color tableStatusColor(TableStatus status) => switch (status) {
@@ -211,11 +212,30 @@ class ProductAvatar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (product.imageUrl.trim().isNotEmpty) {
+    final imageValue = product.imageUrl.trim();
+    final localImageBytes = ProductImageLocalService.tryDecodeDataUrl(
+      imageValue,
+    );
+
+    if (localImageBytes != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.memory(
+          localImageBytes,
+          width: size,
+          height: size,
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) =>
+              _ProductIconAvatar(product: product, size: size),
+        ),
+      );
+    }
+
+    if (imageValue.isNotEmpty) {
       return ClipRRect(
         borderRadius: BorderRadius.circular(8),
         child: Image.network(
-          product.imageUrl,
+          imageValue,
           width: size,
           height: size,
           fit: BoxFit.cover,

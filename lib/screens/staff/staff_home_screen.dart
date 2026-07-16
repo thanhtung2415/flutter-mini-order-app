@@ -115,7 +115,7 @@ class TablesPage extends StatelessWidget {
                       crossAxisCount: count,
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
-                      childAspectRatio: 1.05,
+                      childAspectRatio: 0.92,
                     ),
                   );
                 },
@@ -235,6 +235,7 @@ class _TableCard extends StatelessWidget {
     final state = context.watch<AppState>();
     final order = state.orderForTable(table.id);
     final area = state.areaById(table.areaId);
+    final creator = order == null ? null : state.userById(order.userId);
     final color = tableStatusColor(table.status);
     return Card(
       child: InkWell(
@@ -279,6 +280,15 @@ class _TableCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
+                if (state.isAdmin) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tạo bởi: ${creator?.fullName ?? order.userId}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
                 if (order.isDelayed)
                   const Padding(
                     padding: EdgeInsets.only(top: 6),
@@ -370,6 +380,7 @@ class OrderActionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final table = state.tableById(order.tableId);
+    final creator = state.userById(order.userId);
     final color = orderStatusColor(order.status);
     final canManage = state.canManageOrder(order);
     return Card(
@@ -392,6 +403,12 @@ class OrderActionCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text('${order.id} · ${dateTimeText(order.createdAt)}'),
+                      if (state.isAdmin)
+                        Text(
+                          'Người tạo: ${creator?.fullName ?? order.userId}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                     ],
                   ),
                 ),
