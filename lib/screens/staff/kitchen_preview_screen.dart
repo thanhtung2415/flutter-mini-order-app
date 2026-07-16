@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/app_models.dart';
+import '../../services/export_file_service.dart';
 import '../../services/report_service.dart';
 import '../../state/app_state.dart';
 import '../../utils/formatters.dart';
@@ -66,45 +67,38 @@ class KitchenPreviewScreen extends StatelessWidget {
                         value: order.status.label,
                       ),
                       const Divider(height: 28),
-                      if (kitchenItems.isEmpty)
-                        const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          child: Text('Không có món mới chưa gửi bếp.'),
-                        )
-                      else
-                        for (final item in kitchenItems)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                SizedBox(
-                                  width: 44,
-                                  child: Text(
-                                    '${item.quantity}x',
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                    ),
+                      for (final item in kitchenItems)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 12),
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: 44,
+                                child: Text(
+                                  '${item.quantity}x',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w900,
                                   ),
                                 ),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        item.productName,
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w700,
-                                        ),
+                              ),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      item.productName,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
                                       ),
-                                      if (item.note.isNotEmpty) Text(item.note),
-                                    ],
-                                  ),
+                                    ),
+                                    if (item.note.isNotEmpty) Text(item.note),
+                                  ],
                                 ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
+                        ),
                       if (order.note.isNotEmpty) ...[
                         const Divider(height: 24),
                         Text('Ghi chú order: ${order.note}'),
@@ -139,7 +133,34 @@ class KitchenPreviewScreen extends StatelessWidget {
                       );
                     },
                     icon: const Icon(Icons.file_download_outlined),
-                    label: const Text('Xuất phiếu'),
+                    label: const Text('Copy phiếu'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () async {
+                      try {
+                        final exporter = ExportFileService();
+                        final file = await exporter.createKitchenReceiptPdf(
+                          order: order,
+                          table: table,
+                        );
+                        await exporter.shareFile(
+                          file: file,
+                          title: 'Phiếu bếp ${order.id}',
+                          message: 'Phiếu order bếp ${order.id}',
+                          mimeType: 'application/pdf',
+                        );
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Không xuất được file PDF.'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    label: const Text('PDF phiếu bếp'),
                   ),
                 ],
               ),

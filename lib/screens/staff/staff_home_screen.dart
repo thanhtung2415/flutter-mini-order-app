@@ -74,43 +74,20 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   }
 }
 
-class TablesPage extends StatefulWidget {
+class TablesPage extends StatelessWidget {
   const TablesPage({super.key});
-
-  @override
-  State<TablesPage> createState() => _TablesPageState();
-}
-
-class _TablesPageState extends State<TablesPage> {
-  TableStatus? _selectedStatus;
 
   @override
   Widget build(BuildContext context) {
     return Consumer<AppState>(
       builder: (context, state, _) {
-        final areaFilteredTables = state.filteredTables;
-        final tables = _selectedStatus == null
-            ? areaFilteredTables
-            : areaFilteredTables
-                  .where((table) => table.status == _selectedStatus)
-                  .toList();
+        final tables = state.filteredTables;
         return CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: _AreaFilter(state: state),
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: _TableStatusFilter(
-                  selectedStatus: _selectedStatus,
-                  onSelected: (status) {
-                    setState(() => _selectedStatus = status);
-                  },
-                ),
               ),
             ),
             SliverToBoxAdapter(
@@ -138,7 +115,7 @@ class _TablesPageState extends State<TablesPage> {
                       crossAxisCount: count,
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
-                      childAspectRatio: 1.05,
+                      childAspectRatio: 0.92,
                     ),
                   );
                 },
@@ -147,56 +124,6 @@ class _TablesPageState extends State<TablesPage> {
           ],
         );
       },
-    );
-  }
-}
-
-class _TableStatusFilter extends StatelessWidget {
-  const _TableStatusFilter({
-    required this.selectedStatus,
-    required this.onSelected,
-  });
-
-  final TableStatus? selectedStatus;
-  final ValueChanged<TableStatus?> onSelected;
-
-  @override
-  Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: [
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label: const Text('Tất cả'),
-              selected: selectedStatus == null,
-              onSelected: (_) => onSelected(null),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label: const Text('Bàn trống'),
-              selected: selectedStatus == TableStatus.available,
-              onSelected: (_) => onSelected(TableStatus.available),
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: ChoiceChip(
-              label: const Text('Đang order'),
-              selected: selectedStatus == TableStatus.ordering,
-              onSelected: (_) => onSelected(TableStatus.ordering),
-            ),
-          ),
-          ChoiceChip(
-            label: const Text('Đã thanh toán'),
-            selected: selectedStatus == TableStatus.paid,
-            onSelected: (_) => onSelected(TableStatus.paid),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -308,6 +235,7 @@ class _TableCard extends StatelessWidget {
     final state = context.watch<AppState>();
     final order = state.orderForTable(table.id);
     final area = state.areaById(table.areaId);
+    final creator = order == null ? null : state.userById(order.userId);
     final color = tableStatusColor(table.status);
     return Card(
       child: InkWell(
@@ -352,6 +280,15 @@ class _TableCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontWeight: FontWeight.w700),
                 ),
+                if (state.isAdmin) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tạo bởi: ${creator?.fullName ?? order.userId}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ],
                 if (order.isDelayed)
                   const Padding(
                     padding: EdgeInsets.only(top: 6),
@@ -443,6 +380,7 @@ class OrderActionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
     final table = state.tableById(order.tableId);
+    final creator = state.userById(order.userId);
     final color = orderStatusColor(order.status);
     final canManage = state.canManageOrder(order);
     return Card(
@@ -465,6 +403,12 @@ class OrderActionCard extends StatelessWidget {
                       ),
                       const SizedBox(height: 4),
                       Text('${order.id} · ${dateTimeText(order.createdAt)}'),
+                      if (state.isAdmin)
+                        Text(
+                          'Người tạo: ${creator?.fullName ?? order.userId}',
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
                     ],
                   ),
                 ),
