@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:shared_preferences/shared_preferences.dart';
@@ -6,6 +7,10 @@ abstract class LocalDatabaseStorage {
   Future<Map<String, dynamic>?> loadSnapshot();
   Future<void> saveSnapshot(Map<String, Object?> snapshot);
   Future<void> clearSnapshot();
+}
+
+abstract class RealtimeDatabaseStorage {
+  Stream<void> watchRemoteChanges();
 }
 
 class SharedPreferencesLocalDatabaseStorage implements LocalDatabaseStorage {

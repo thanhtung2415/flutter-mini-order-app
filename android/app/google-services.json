@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "993519322530",
+    "project_id": "mini-order-app-umt",
+    "storage_bucket": "mini-order-app-umt.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:993519322530:android:ba15e241624f46a4abdefb",
+        "android_client_info": {
+          "package_name": "vn.umt.mini_order_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "993519322530-jtc334q54eja4tg0dsimlbhvrc57nar0.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "vn.umt.mini_order_app",
+            "certificate_hash": "57e1b3ae9593797aec3b2dafb0b4f4a5b34f49c1"
+          }
+        },
+        {
+          "client_id": "993519322530-ullu2cg0ieop79j9qif3mfl9pdfbupts.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCVjwKrUFUtXBII9t7KBpT5h1aE1B44PGU"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "993519322530-ullu2cg0ieop79j9qif3mfl9pdfbupts.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

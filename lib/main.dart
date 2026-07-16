@@ -1,19 +1,53 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:provider/provider.dart';
 
+import 'firebase_options.dart';
 import 'models/app_models.dart';
 import 'repositories/mock_order_repository.dart';
+import 'screens/admin/admin_home_screen.dart';
 import 'screens/auth/login_screen.dart';
+import 'screens/staff/staff_home_screen.dart';
+import 'services/access_request_service.dart';
+import 'services/authentication_service.dart';
 import 'services/cart_draft_storage_service.dart';
+import 'services/firestore_database_storage_service.dart';
+import 'services/firestore_order_transaction_service.dart';
 import 'services/local_database_storage_service.dart';
+import 'services/user_administration_service.dart';
 import 'state/app_state.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting('vi_VN');
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  final firebaseAuth = FirebaseAuth.instance;
+  final firebaseFunctions = FirebaseFunctions.instanceFor(
+    region: 'asia-southeast1',
+  );
+  final databaseStorage = SynchronizedDatabaseStorage(
+    local: SharedPreferencesLocalDatabaseStorage(),
+    remote: FirestoreDatabaseStorage(FirebaseFirestore.instance, firebaseAuth),
+  );
+
   runApp(
     ChangeNotifierProvider(
       create: (_) => AppState(
-        MockOrderRepository(
-          localDatabaseStorage: SharedPreferencesLocalDatabaseStorage(),
+        MockOrderRepository(localDatabaseStorage: databaseStorage),
+        authenticationService: FirebaseAuthenticationService(firebaseAuth),
+        accessRequestService: FirebaseAccessRequestService(
+          firebaseFunctions,
+          FirebaseFirestore.instance,
+        ),
+        userAdministrationService: FirebaseUserAdministrationService(
+          firebaseFunctions,
+        ),
+        orderTransactionService: FirestoreOrderTransactionService(
+          FirebaseFirestore.instance,
         ),
         cartDraftStorage: SharedPreferencesCartDraftStorage(),
       )..initialize(),
@@ -39,69 +73,48 @@ class MiniOrderApp extends StatelessWidget {
           tertiary: const Color(0xFFF57C00),
         ),
         scaffoldBackgroundColor: const Color(0xFFF6F8FA),
+        appBarTheme: const AppBarTheme(
+          centerTitle: false,
+          elevation: 0,
+          backgroundColor: Color(0xFFF6F8FA),
+        ),
+        cardTheme: CardThemeData(
+          elevation: 0,
+          margin: EdgeInsets.zero,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: const BorderSide(color: Color(0xFFE0E6EA)),
+          ),
+        ),
+        inputDecorationTheme: InputDecorationTheme(
+          filled: true,
+          fillColor: Colors.white,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFFD6DEE3)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(8),
+            borderSide: const BorderSide(color: Color(0xFFD6DEE3)),
+          ),
+        ),
+        filledButtonTheme: FilledButtonThemeData(
+          style: FilledButton.styleFrom(
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+            minimumSize: const Size.fromHeight(48),
+          ),
+        ),
       ),
       home: Consumer<AppState>(
         builder: (context, state, _) {
           final user = state.currentUser;
           if (user == null) return const LoginScreen();
-          return _SignedInPlaceholder(user: user);
+          return user.role == UserRole.admin
+              ? const AdminHomeScreen()
+              : const StaffHomeScreen();
         },
-      ),
-    );
-  }
-}
-
-class _SignedInPlaceholder extends StatelessWidget {
-  const _SignedInPlaceholder({required this.user});
-
-  final AppUser user;
-
-  @override
-  Widget build(BuildContext context) {
-    final state = context.watch<AppState>();
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Flutter Mini Order App'),
-        actions: [
-          IconButton(
-            tooltip: 'Dang xuat',
-            onPressed: state.logout,
-            icon: const Icon(Icons.logout),
-          ),
-        ],
-      ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(
-                user.role == UserRole.admin
-                    ? Icons.admin_panel_settings
-                    : Icons.badge,
-                size: 56,
-                color: Theme.of(context).colorScheme.primary,
-              ),
-              const SizedBox(height: 12),
-              Text(
-                'Dang nhap thanh cong',
-                style: Theme.of(context)
-                    .textTheme
-                    .titleLarge
-                    ?.copyWith(fontWeight: FontWeight.w800),
-              ),
-              const SizedBox(height: 8),
-              Text('${user.fullName} - ${user.role.label}'),
-              const SizedBox(height: 8),
-              Text(
-                'Cac man hinh Staff va Admin se duoc merge tu nhanh cua thanh vien phu trach.',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodyMedium,
-              ),
-            ],
-          ),
-        ),
       ),
     );
   }

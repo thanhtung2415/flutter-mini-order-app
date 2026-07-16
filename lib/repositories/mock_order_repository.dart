@@ -19,8 +19,8 @@ class MockOrderRepository implements PersistentOrderRepository {
   final List<Product> _products = [];
   final List<Order> _orders = [];
   final List<Payment> _payments = [];
-  final Map<String, String> _passwords = {};
   bool _isRestoring = false;
+  Future<void> _persistQueue = Future<void>.value();
 
   @override
   List<AppUser> get users => List.unmodifiable(_users);
@@ -38,15 +38,9 @@ class MockOrderRepository implements PersistentOrderRepository {
   List<Payment> get payments => List.unmodifiable(_payments);
 
   @override
-  AppUser? authenticate(String email, String password) {
+  AppUser? findUserByEmail(String email) {
     final normalizedEmail = email.trim().toLowerCase();
-    final user = _find(
-      _users,
-      (item) => item.email.toLowerCase() == normalizedEmail,
-    );
-    if (user == null || user.status == AccountStatus.locked) return null;
-    if (_passwords[user.id] != password) return null;
-    return user;
+    return _find(_users, (item) => item.email.toLowerCase() == normalizedEmail);
   }
 
   @override
@@ -88,21 +82,19 @@ class MockOrderRepository implements PersistentOrderRepository {
   }
 
   @override
-  void upsertUser(AppUser user, {String password = '123456'}) {
+  void upsertUser(AppUser user) {
     final index = _users.indexWhere((item) => item.id == user.id);
     if (index >= 0) {
       _users[index] = user.copyWith(updatedAt: DateTime.now());
     } else {
       _users.add(user);
     }
-    _passwords[user.id] = password;
     _persist();
   }
 
   @override
   void deleteUser(String id) {
     _users.removeWhere((item) => item.id == id);
-    _passwords.remove(id);
     _persist();
   }
 
@@ -181,6 +173,8 @@ class MockOrderRepository implements PersistentOrderRepository {
     if (product == null) return;
     final nextStatus = stock <= 0
         ? ProductStatus.soldOut
+        : product.status == ProductStatus.hidden
+        ? ProductStatus.hidden
         : ProductStatus.available;
     upsertProduct(product.copyWith(stock: stock, status: nextStatus));
   }
@@ -247,7 +241,10 @@ class MockOrderRepository implements PersistentOrderRepository {
     final storage = localDatabaseStorage;
     if (storage == null) return;
     final snapshot = await storage.loadSnapshot();
-    if (snapshot == null) return;
+    if (snapshot == null) {
+      await persistNow();
+      return;
+    }
     _replaceWithSnapshot(snapshot);
   }
 
@@ -255,6 +252,7 @@ class MockOrderRepository implements PersistentOrderRepository {
   Future<void> persistNow() async {
     final storage = localDatabaseStorage;
     if (storage == null) return;
+    await _persistQueue;
     await storage.saveSnapshot(_snapshot());
   }
 
@@ -271,6 +269,25 @@ class MockOrderRepository implements PersistentOrderRepository {
     return encoder.convert(_snapshot());
   }
 
+  @override
+  T mutateWithoutPersistence<T>(T Function() mutation) {
+    final wasRestoring = _isRestoring;
+    _isRestoring = true;
+    try {
+      return mutation();
+    } finally {
+      _isRestoring = wasRestoring;
+    }
+  }
+
+  @override
+  Stream<void>? watchRemoteChanges() {
+    final storage = localDatabaseStorage;
+    return storage is RealtimeDatabaseStorage
+        ? (storage as RealtimeDatabaseStorage).watchRemoteChanges()
+        : null;
+  }
+
   Map<String, Object?> _snapshot() {
     return {
       'version': 1,
@@ -281,7 +298,6 @@ class MockOrderRepository implements PersistentOrderRepository {
       'products': _products.map((item) => item.toMap()).toList(),
       'orders': _orders.map((item) => item.toMap()).toList(),
       'payments': _payments.map((item) => item.toMap()).toList(),
-      'passwords': Map<String, String>.from(_passwords),
       'savedAt': DateTime.now().toIso8601String(),
     };
   }
@@ -306,18 +322,6 @@ class MockOrderRepository implements PersistentOrderRepository {
         _readList(snapshot['payments'], PaymentSerializer.fromMap),
       );
 
-      final rawPasswords = snapshot['passwords'];
-      if (rawPasswords is Map) {
-        _passwords.addAll(
-          rawPasswords.map(
-            (key, value) => MapEntry(key.toString(), value.toString()),
-          ),
-        );
-      }
-      for (final user in _users) {
-        _passwords.putIfAbsent(user.id, () => '123456');
-      }
-
       if (_users.isEmpty || _areas.isEmpty || _tables.isEmpty) {
         _clearAll();
         _seed();
@@ -341,7 +345,10 @@ class MockOrderRepository implements PersistentOrderRepository {
   void _persist() {
     final storage = localDatabaseStorage;
     if (storage == null || _isRestoring) return;
-    unawaited(storage.saveSnapshot(_snapshot()));
+    final snapshot = _snapshot();
+    _persistQueue = _persistQueue
+        .then((_) => storage.saveSnapshot(snapshot))
+        .catchError((_) {});
   }
 
   void _clearAll() {
@@ -352,7 +359,6 @@ class MockOrderRepository implements PersistentOrderRepository {
     _products.clear();
     _orders.clear();
     _payments.clear();
-    _passwords.clear();
   }
 
   void _seed() {
@@ -386,8 +392,6 @@ class MockOrderRepository implements PersistentOrderRepository {
         updatedAt: now,
       ),
     ]);
-
-    _passwords.addAll({'u_admin': '123456', 'u_staff': '123456'});
 
     _areas.addAll(const [
       Area(id: 'a_in', name: 'Trong nhà', description: 'Khu bàn máy lạnh'),
@@ -558,6 +562,7 @@ class MockOrderRepository implements PersistentOrderRepository {
             quantity: 2,
             unitPrice: 30000,
             note: 'Ít đá',
+            kitchenBatchId: 'seed_o_delay',
           ),
           OrderItem(
             id: 'oi02',
@@ -565,6 +570,7 @@ class MockOrderRepository implements PersistentOrderRepository {
             productName: 'Mì xào',
             quantity: 1,
             unitPrice: 45000,
+            kitchenBatchId: 'seed_o_delay',
           ),
         ],
         status: OrderStatus.preparing,
@@ -584,6 +590,7 @@ class MockOrderRepository implements PersistentOrderRepository {
             productName: 'Cà phê sữa',
             quantity: 1,
             unitPrice: 25000,
+            kitchenBatchId: 'seed_o_paid',
           ),
           OrderItem(
             id: 'oi04',
@@ -591,6 +598,7 @@ class MockOrderRepository implements PersistentOrderRepository {
             productName: 'Cơm gà',
             quantity: 2,
             unitPrice: 50000,
+            kitchenBatchId: 'seed_o_paid',
           ),
         ],
         status: OrderStatus.paid,

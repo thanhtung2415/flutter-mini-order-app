@@ -66,5 +66,11 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Ứng dụng cần truy cập thư viện ảnh để chọn ảnh món ăn.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>Ứng dụng có thể lưu ảnh món ăn khi người dùng thao tác trong phần quản lý món.</string>
+	<key>NSCameraUsageDescription</key>
+	<string>Ứng dụng cần truy cập camera để chụp ảnh món ăn.</string>
 </dict>
 </plist>
