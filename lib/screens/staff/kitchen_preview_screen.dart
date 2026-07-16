@@ -30,6 +30,7 @@ class KitchenPreviewScreen extends StatelessWidget {
         }
 
         final table = state.tableById(order.tableId);
+        final kitchenItems = order.currentKitchenItems;
         return Scaffold(
           appBar: AppBar(title: const Text('Phiếu gửi bếp')),
           body: ListView(
@@ -65,38 +66,45 @@ class KitchenPreviewScreen extends StatelessWidget {
                         value: order.status.label,
                       ),
                       const Divider(height: 28),
-                      for (final item in order.items)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              SizedBox(
-                                width: 44,
-                                child: Text(
-                                  '${item.quantity}x',
-                                  style: const TextStyle(
-                                    fontWeight: FontWeight.w900,
+                      if (kitchenItems.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          child: Text('Không có món mới chưa gửi bếp.'),
+                        )
+                      else
+                        for (final item in kitchenItems)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SizedBox(
+                                  width: 44,
+                                  child: Text(
+                                    '${item.quantity}x',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w900,
+                                    ),
                                   ),
                                 ),
-                              ),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      item.productName,
-                                      style: const TextStyle(
-                                        fontWeight: FontWeight.w700,
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        item.productName,
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
                                       ),
-                                    ),
-                                    if (item.note.isNotEmpty) Text(item.note),
-                                  ],
+                                      if (item.note.isNotEmpty) Text(item.note),
+                                    ],
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                        ),
                       if (order.note.isNotEmpty) ...[
                         const Divider(height: 24),
                         Text('Ghi chú order: ${order.note}'),
@@ -110,7 +118,7 @@ class KitchenPreviewScreen extends StatelessWidget {
                 spacing: 10,
                 runSpacing: 10,
                 children: [
-                  if (order.status == OrderStatus.pending)
+                  if (order.hasUnsentKitchenItems)
                     FilledButton.icon(
                       onPressed: () => state.sendToKitchen(order.id),
                       icon: const Icon(Icons.send),

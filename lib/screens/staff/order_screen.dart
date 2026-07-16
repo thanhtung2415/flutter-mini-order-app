@@ -19,6 +19,7 @@ class OrderScreen extends StatefulWidget {
 
 class _OrderScreenState extends State<OrderScreen> {
   final _noteController = TextEditingController();
+  bool _isAddingItems = false;
 
   @override
   void initState() {
@@ -64,7 +65,22 @@ class _OrderScreenState extends State<OrderScreen> {
               ],
             ),
             actions: [
-              if (order == null && state.cartItems.isNotEmpty)
+              if (order != null &&
+                  order.status != OrderStatus.paid &&
+                  order.status != OrderStatus.cancelled)
+                IconButton(
+                  tooltip: _isAddingItems ? 'Quay lại order' : 'Thêm món',
+                  onPressed: state.canManageOrder(order)
+                      ? () {
+                          setState(() => _isAddingItems = !_isAddingItems);
+                        }
+                      : null,
+                  icon: Icon(
+                    _isAddingItems ? Icons.receipt_long : Icons.add_circle,
+                  ),
+                ),
+              if ((order == null || _isAddingItems) &&
+                  state.cartItems.isNotEmpty)
                 IconButton(
                   tooltip: 'Xóa giỏ hàng',
                   onPressed: state.clearCart,
@@ -72,8 +88,14 @@ class _OrderScreenState extends State<OrderScreen> {
                 ),
             ],
           ),
-          body: order == null
-              ? _NewOrderBody(noteController: _noteController)
+          body: order == null || _isAddingItems
+              ? _NewOrderBody(
+                  noteController: _noteController,
+                  existingOrder: order,
+                  onConfirmed: order == null
+                      ? null
+                      : () => setState(() => _isAddingItems = false),
+                )
               : _ExistingOrderBody(order: order),
         );
       },
@@ -82,9 +104,15 @@ class _OrderScreenState extends State<OrderScreen> {
 }
 
 class _NewOrderBody extends StatelessWidget {
-  const _NewOrderBody({required this.noteController});
+  const _NewOrderBody({
+    required this.noteController,
+    this.existingOrder,
+    this.onConfirmed,
+  });
 
   final TextEditingController noteController;
+  final Order? existingOrder;
+  final VoidCallback? onConfirmed;
 
   @override
   Widget build(BuildContext context) {
@@ -148,7 +176,11 @@ class _NewOrderBody extends StatelessWidget {
         SliverToBoxAdapter(
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 20),
-            child: _CartPanel(noteController: noteController),
+            child: _CartPanel(
+              noteController: noteController,
+              existingOrder: existingOrder,
+              onConfirmed: onConfirmed,
+            ),
           ),
         ),
       ],
@@ -260,9 +292,15 @@ class _ProductCard extends StatelessWidget {
 }
 
 class _CartPanel extends StatelessWidget {
-  const _CartPanel({required this.noteController});
+  const _CartPanel({
+    required this.noteController,
+    this.existingOrder,
+    this.onConfirmed,
+  });
 
   final TextEditingController noteController;
+  final Order? existingOrder;
+  final VoidCallback? onConfirmed;
 
   @override
   Widget build(BuildContext context) {
@@ -334,10 +372,15 @@ class _CartPanel extends StatelessWidget {
                   final order = state.confirmOrder(noteController.text);
                   if (order != null) {
                     noteController.clear();
+                    onConfirmed?.call();
                   }
                 },
                 icon: const Icon(Icons.check_circle),
-                label: const Text('Xác nhận order'),
+                label: Text(
+                  existingOrder == null
+                      ? 'Xác nhận order'
+                      : 'Thêm món vào order',
+                ),
               ),
             ],
           ],
