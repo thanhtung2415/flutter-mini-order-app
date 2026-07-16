@@ -74,20 +74,43 @@ class _StaffHomeScreenState extends State<StaffHomeScreen> {
   }
 }
 
-class TablesPage extends StatelessWidget {
+class TablesPage extends StatefulWidget {
   const TablesPage({super.key});
+
+  @override
+  State<TablesPage> createState() => _TablesPageState();
+}
+
+class _TablesPageState extends State<TablesPage> {
+  TableStatus? _selectedStatus;
 
   @override
   Widget build(BuildContext context) {
     return Consumer<AppState>(
       builder: (context, state, _) {
-        final tables = state.filteredTables;
+        final areaFilteredTables = state.filteredTables;
+        final tables = _selectedStatus == null
+            ? areaFilteredTables
+            : areaFilteredTables
+                  .where((table) => table.status == _selectedStatus)
+                  .toList();
         return CustomScrollView(
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
                 child: _AreaFilter(state: state),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                child: _TableStatusFilter(
+                  selectedStatus: _selectedStatus,
+                  onSelected: (status) {
+                    setState(() => _selectedStatus = status);
+                  },
+                ),
               ),
             ),
             SliverToBoxAdapter(
@@ -124,6 +147,56 @@ class TablesPage extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+class _TableStatusFilter extends StatelessWidget {
+  const _TableStatusFilter({
+    required this.selectedStatus,
+    required this.onSelected,
+  });
+
+  final TableStatus? selectedStatus;
+  final ValueChanged<TableStatus?> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      child: Row(
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: const Text('Tất cả'),
+              selected: selectedStatus == null,
+              onSelected: (_) => onSelected(null),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: const Text('Bàn trống'),
+              selected: selectedStatus == TableStatus.available,
+              onSelected: (_) => onSelected(TableStatus.available),
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.only(right: 8),
+            child: ChoiceChip(
+              label: const Text('Đang order'),
+              selected: selectedStatus == TableStatus.ordering,
+              onSelected: (_) => onSelected(TableStatus.ordering),
+            ),
+          ),
+          ChoiceChip(
+            label: const Text('Đã thanh toán'),
+            selected: selectedStatus == TableStatus.paid,
+            onSelected: (_) => onSelected(TableStatus.paid),
+          ),
+        ],
+      ),
     );
   }
 }
