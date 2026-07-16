@@ -94,4 +94,3 @@ class SharedPreferencesCartDraftStorage implements CartDraftStorage {
     await prefs.remove(_key);
   }
 }
-
