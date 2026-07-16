@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../../models/app_models.dart';
+import '../../services/export_file_service.dart';
 import '../../services/report_service.dart';
 import '../../state/app_state.dart';
 import '../../utils/formatters.dart';
@@ -30,6 +31,7 @@ class KitchenPreviewScreen extends StatelessWidget {
         }
 
         final table = state.tableById(order.tableId);
+        final kitchenItems = order.currentKitchenItems;
         return Scaffold(
           appBar: AppBar(title: const Text('Phiếu gửi bếp')),
           body: ListView(
@@ -65,7 +67,7 @@ class KitchenPreviewScreen extends StatelessWidget {
                         value: order.status.label,
                       ),
                       const Divider(height: 28),
-                      for (final item in order.items)
+                      for (final item in kitchenItems)
                         Padding(
                           padding: const EdgeInsets.only(bottom: 12),
                           child: Row(
@@ -110,7 +112,7 @@ class KitchenPreviewScreen extends StatelessWidget {
                 spacing: 10,
                 runSpacing: 10,
                 children: [
-                  if (order.status == OrderStatus.pending)
+                  if (order.hasUnsentKitchenItems)
                     FilledButton.icon(
                       onPressed: () => state.sendToKitchen(order.id),
                       icon: const Icon(Icons.send),
@@ -131,7 +133,34 @@ class KitchenPreviewScreen extends StatelessWidget {
                       );
                     },
                     icon: const Icon(Icons.file_download_outlined),
-                    label: const Text('Xuất phiếu'),
+                    label: const Text('Copy phiếu'),
+                  ),
+                  FilledButton.tonalIcon(
+                    onPressed: () async {
+                      try {
+                        final exporter = ExportFileService();
+                        final file = await exporter.createKitchenReceiptPdf(
+                          order: order,
+                          table: table,
+                        );
+                        await exporter.shareFile(
+                          file: file,
+                          title: 'Phiếu bếp ${order.id}',
+                          message: 'Phiếu order bếp ${order.id}',
+                          mimeType: 'application/pdf',
+                        );
+                      } catch (_) {
+                        if (!context.mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('Không xuất được file PDF.'),
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    },
+                    icon: const Icon(Icons.picture_as_pdf_outlined),
+                    label: const Text('PDF phiếu bếp'),
                   ),
                 ],
               ),
