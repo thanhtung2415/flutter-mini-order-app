@@ -6,6 +6,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:mini_order_app/domain/models/app_models.dart';
 import 'package:mini_order_app/data/repositories/mock_order_repository.dart';
 import 'package:mini_order_app/features/ordering/data/cart_draft_storage_service.dart';
+import 'package:mini_order_app/features/ordering/data/firestore_order_transaction_service.dart';
 import 'package:mini_order_app/data/storage/local_database_storage_service.dart';
 import 'package:mini_order_app/features/reporting/data/report_service.dart';
 import 'package:mini_order_app/app/state/app_state.dart';
@@ -289,6 +290,7 @@ void main() {
       expect(state.paymentById(payment.id)?.status, PaymentStatus.paid);
       expect(state.orderById(order.id)?.status, OrderStatus.paid);
       expect(state.tableById('t01')?.status, TableStatus.paid);
+      expect(state.message, isNull);
     });
 
     test('staff cannot pay order served by another staff member', () async {
@@ -339,6 +341,47 @@ void main() {
       expect(await state.clearTable('t01'), isTrue);
       expect(state.tableById('t01')?.status, TableStatus.available);
       expect(state.tableById('t01')?.currentOrderId, isNull);
+    });
+
+    test('keeps paid table when Firestore clear transaction fails', () async {
+      final failedState = AppState(
+        MockOrderRepository(),
+        authenticationService: TestAuthenticationService(),
+        orderTransactionService: _FailingClearTransactionService(),
+      );
+      await failedState.login('admin@miniorder.vn', '123456');
+
+      expect(failedState.tableById('t03')?.status, TableStatus.paid);
+      expect(await failedState.clearTable('t03'), isFalse);
+      expect(failedState.tableById('t03')?.status, TableStatus.paid);
+      expect(failedState.error, contains('Firestore'));
+      failedState.dispose();
+    });
+
+    test('staff receives a table cleared by admin in realtime', () async {
+      final storage = _RealtimeLocalDatabaseStorage(emitChangesOnSave: true);
+      final adminState = AppState(
+        MockOrderRepository(localDatabaseStorage: storage),
+        authenticationService: TestAuthenticationService(),
+      );
+      final staffState = AppState(
+        MockOrderRepository(localDatabaseStorage: storage),
+        authenticationService: TestAuthenticationService(),
+      );
+
+      await adminState.login('admin@miniorder.vn', '123456');
+      await staffState.login('staff@miniorder.vn', '123456');
+      expect(staffState.tableById('t03')?.status, TableStatus.paid);
+
+      expect(await adminState.clearTable('t03'), isTrue);
+      await _waitUntil(
+        () => staffState.tableById('t03')?.status == TableStatus.available,
+      );
+
+      expect(staffState.tableById('t03')?.currentOrderId, isNull);
+      adminState.dispose();
+      staffState.dispose();
+      await storage.dispose();
     });
 
     test('staff cannot update admin-only product data', () async {
@@ -479,6 +522,25 @@ void main() {
       expect(state.error, contains('giá phải lớn hơn 0'));
     });
 
+    test('admin deletes a user while preserving order history', () async {
+      await state.login('admin@miniorder.vn', '123456');
+      final staffOrderIds = state.orders
+          .where((order) => order.userId == 'u_staff')
+          .map((order) => order.id)
+          .toSet();
+
+      expect(staffOrderIds, isNotEmpty);
+      expect(await state.deleteUser('u_staff'), isTrue);
+      expect(state.userById('u_staff'), isNull);
+      expect(
+        state.orders
+            .where((order) => staffOrderIds.contains(order.id))
+            .map((order) => order.id)
+            .toSet(),
+        staffOrderIds,
+      );
+    });
+
     test('restores cart draft from local storage', () async {
       final storage = _MemoryCartDraftStorage();
       final firstState = AppState(
@@ -567,7 +629,10 @@ class _MemoryLocalDatabaseStorage implements LocalDatabaseStorage {
 
 class _RealtimeLocalDatabaseStorage
     implements LocalDatabaseStorage, RealtimeDatabaseStorage {
+  _RealtimeLocalDatabaseStorage({this.emitChangesOnSave = false});
+
   final _changes = StreamController<void>.broadcast();
+  final bool emitChangesOnSave;
   Map<String, dynamic>? _snapshot;
 
   @override
@@ -575,7 +640,14 @@ class _RealtimeLocalDatabaseStorage
 
   @override
   Future<void> saveSnapshot(Map<String, Object?> snapshot) async {
-    _snapshot = Map<String, dynamic>.from(snapshot);
+    _snapshot = Map<String, dynamic>.from(
+      jsonDecode(jsonEncode(snapshot)) as Map<String, dynamic>,
+    );
+    if (emitChangesOnSave) {
+      scheduleMicrotask(() {
+        if (!_changes.isClosed) _changes.add(null);
+      });
+    }
   }
 
   @override
@@ -594,4 +666,48 @@ class _RealtimeLocalDatabaseStorage
     _snapshot = snapshot;
     _changes.add(null);
   }
+
+  Future<void> dispose() => _changes.close();
+}
+
+class _FailingClearTransactionService implements OrderTransactionService {
+  @override
+  Future<void> clearPaidTable(RestaurantTable table) {
+    throw const OrderTransactionFailure('Không thể dọn bàn trên Firestore.');
+  }
+
+  @override
+  Future<void> appendItemsToOrder({
+    required Order order,
+    required List<OrderItem> items,
+    required String note,
+  }) async {}
+
+  @override
+  Future<void> confirmPayment({
+    required Payment payment,
+    required String confirmedBy,
+  }) async {}
+
+  @override
+  Future<void> createOrder(Order order) async {}
+
+  @override
+  Future<void> createPayment(Payment payment) async {}
+
+  @override
+  Future<void> transferOrder({
+    required Order order,
+    required RestaurantTable sourceTable,
+    required RestaurantTable targetTable,
+    required List<Payment> waitingPayments,
+  }) async {}
+}
+
+Future<void> _waitUntil(bool Function() condition) async {
+  for (var attempt = 0; attempt < 100; attempt++) {
+    if (condition()) return;
+    await Future<void>.delayed(const Duration(milliseconds: 10));
+  }
+  fail('Dữ liệu realtime không được cập nhật trong thời gian chờ.');
 }
