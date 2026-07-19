@@ -263,16 +263,8 @@ export const adminDeleteUser = onCall(async (request) => {
   if (uid === request.auth?.uid) {
     throw new HttpsError("failed-precondition", "Không thể xóa tài khoản đang đăng nhập.");
   }
-  const orderHistory = await db.collection("orders")
-    .where("userId", "==", uid)
-    .limit(1)
-    .get();
-  if (!orderHistory.empty) {
-    throw new HttpsError(
-      "failed-precondition",
-      "Tài khoản đã có lịch sử order; hãy khóa thay vì xóa.",
-    );
-  }
+  // Order documents intentionally remain as immutable business history.
+  // Deleting the account removes access without cascading into invoices.
   await getAuth().deleteUser(uid);
   await db.doc(`users/${uid}`).delete();
   return {uid};
