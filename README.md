@@ -2,14 +2,19 @@
 
 Ứng dụng quản lý order nội bộ cho quán nhỏ, được xây dựng bằng Flutter theo SRS của đồ án Phát triển ứng dụng di động.
 
+## Phạm vi nền tảng mobile
+
+- Đây là **Flutter mobile app** viết bằng Dart, sử dụng giao diện Material 3.
+- Android là nền tảng triển khai và demo final; package là `vn.umt.mini_order_app` và APK release được cung cấp cùng bài nộp.
+- Source có Flutter host project cho iOS để thể hiện kiến trúc đa nền tảng. Firebase iOS chưa được đăng ký/cấu hình, vì vậy chỉ công bố iOS là hướng mở rộng, chưa phải nền tảng đã nghiệm thu.
+- Web, Windows, macOS và Linux không thuộc phạm vi final. Khi chạy demo phải chọn Android emulator hoặc điện thoại Android, không chọn Windows desktop.
+
 ## Tài khoản demo Firebase (chỉ bản debug)
 
 - Admin: `admin@miniorder.vn` / `123456`
 - Nhân viên: `staff@miniorder.vn` / `123456`
 
 Hai tài khoản được xác thực bằng Firebase Authentication. Vai trò, trạng thái tài khoản và dữ liệu nghiệp vụ được quản lý trong ứng dụng.
-
-Mật khẩu demo offline chỉ được chấp nhận khi chạy debug. Bản release luôn yêu cầu Firebase Authentication và không hiển thị nút điền nhanh tài khoản demo.
 
 ## Chức năng chính
 
