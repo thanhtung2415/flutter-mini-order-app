@@ -3,8 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 import 'package:mini_order_app/main.dart';
-import 'package:mini_order_app/repositories/mock_order_repository.dart';
-import 'package:mini_order_app/state/app_state.dart';
+import 'package:mini_order_app/data/repositories/mock_order_repository.dart';
+import 'package:mini_order_app/app/state/app_state.dart';
 
 import 'test_authentication_service.dart';
 

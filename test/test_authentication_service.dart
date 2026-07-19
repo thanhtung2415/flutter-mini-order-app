@@ -1,6 +1,6 @@
-import 'package:mini_order_app/models/app_models.dart';
-import 'package:mini_order_app/services/access_request_service.dart';
-import 'package:mini_order_app/services/authentication_service.dart';
+import 'package:mini_order_app/domain/models/app_models.dart';
+import 'package:mini_order_app/features/access_control/data/access_request_service.dart';
+import 'package:mini_order_app/features/authentication/data/authentication_service.dart';
 
 class TestAuthenticationService implements AuthenticationService {
   String? passwordResetEmail;

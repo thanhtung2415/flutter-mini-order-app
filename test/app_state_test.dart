@@ -3,12 +3,12 @@ import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
-import 'package:mini_order_app/models/app_models.dart';
-import 'package:mini_order_app/repositories/mock_order_repository.dart';
-import 'package:mini_order_app/services/cart_draft_storage_service.dart';
-import 'package:mini_order_app/services/local_database_storage_service.dart';
-import 'package:mini_order_app/services/report_service.dart';
-import 'package:mini_order_app/state/app_state.dart';
+import 'package:mini_order_app/domain/models/app_models.dart';
+import 'package:mini_order_app/data/repositories/mock_order_repository.dart';
+import 'package:mini_order_app/features/ordering/data/cart_draft_storage_service.dart';
+import 'package:mini_order_app/data/storage/local_database_storage_service.dart';
+import 'package:mini_order_app/features/reporting/data/report_service.dart';
+import 'package:mini_order_app/app/state/app_state.dart';
 
 import 'test_authentication_service.dart';
 
@@ -336,7 +336,7 @@ void main() {
       final payment = await state.createPayment(order!.id, PaymentMethod.cash);
       await state.confirmPayment(payment!.id);
 
-      expect(state.clearTable('t01'), isTrue);
+      expect(await state.clearTable('t01'), isTrue);
       expect(state.tableById('t01')?.status, TableStatus.available);
       expect(state.tableById('t01')?.currentOrderId, isNull);
     });

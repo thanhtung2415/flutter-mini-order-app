@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mini_order_app/services/product_image_local_service.dart';
+import 'package:mini_order_app/features/catalog/data/product_image_local_service.dart';
 
 void main() {
   test('builds and decodes local product image data URLs', () {

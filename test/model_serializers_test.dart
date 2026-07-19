@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:mini_order_app/models/app_models.dart';
-import 'package:mini_order_app/models/model_serializers.dart';
+import 'package:mini_order_app/domain/models/app_models.dart';
+import 'package:mini_order_app/domain/models/model_serializers.dart';
 
 void main() {
   test('serializes product using SRS field names', () {
